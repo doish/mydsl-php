@@ -1,6 +1,8 @@
 <?php
 
 const dollerReplacePattern = '/^(\$\.?)/';
+const firstValuePattern = '/^([^\[ \]\.]+)\.?(.+)$/';
+const nextKeyPattern = '/^(\[([^\[\]]+)\]|([^\[\] \.]+))\.?(.*)$/';
 
 function is_hash(&$array) {
   $i = 0;
@@ -12,11 +14,233 @@ function is_hash(&$array) {
   return false;
 }
 
-$dslFunctions["get"] = function($a, $b) {
-  echo $a;
-  echo $b;
-  return new Result(111, 222);
+function is_list(&$array) {
+  return is_array($array) && !is_hash($array);
+}
+
+$dslFunctions["get"] = function(&$container, ...$args) {
+  $firstArg = $args[0];
+  $args = array_slice($args, 1);
+  $lastKeyValueResult = &getLastKeyValue($container, $firstArg, $container);
+  if ($lastKeyValueResult->hasError()) {
+    return $lastKeyValueResult;
+  }
+  $key = &$lastKeyValueResult->value()[0];
+  $parentValue = &$lastKeyValueResult->value()[1];
+  $defaultValue = null;
+  if (count($args) !== 0) {
+    // TODO 
+  }
+  if ($parentValue !== null) {
+    if ($key === null) {
+      $result = new Result([&$parentValue, null]);
+      return $result;
+    } else {
+      if ($key === "") {
+        $cursor = $parentValue;
+      } else {
+        $keyType = gettype($key);
+        if ($keyType === 'string') {
+          if (is_numeric($key)) {
+            $cursor = $parentValue[intval($key)];
+          } else {
+            $cursor = $parentValue[$key];
+          }
+        } elseif ($keyType === 'integer') {
+          $cursor = $parentValue[$key];
+        }
+      }
+      while (count($args) > 0) {
+        $shiftArg = $args[0];
+        $args = array_slice($args, 1);
+        $shiftArgResult = &$shiftArg->evaluate($container);
+        if ($shiftArgResult->hasError()) {
+          return $shiftArgResult;
+        }
+        $key = &$shiftArgResult->value();
+        if (is_numeric($key)) {
+          $cursor = $cursor[intval($key)];
+        } else {
+          $cursor = $cursor[$key];
+        }
+      }
+      if ($cursor === null && count($args) == 0) {
+        return new Result([&$defaultValue, null]);
+      }
+      return new Result([&$cursor, null]);
+    }
+  } else {
+    return new Result([null, null]);
+  }
 };
+
+$dslFunctions["set"] = function(&$container, ...$args) {
+  $valueResult = &$args[1]->evaluate($container);
+  if ($valueResult->hasError()) {
+    return $valueResult;
+  }
+  $lastKeyValueResult = &getLastKeyValue($container, $args[0], $container);
+  if ($lastKeyValueResult->hasError()) {
+    return $lastKeyValueResult;
+  }
+  $key = &$lastKeyValueResult->value()[0];
+  $parentValue = &$lastKeyValueResult->value()[1];
+  if ($parentValue !== null && $key !== null && $key !== "") {
+    $keyType = gettype($key);
+    if ($keyType === 'string') {
+      if (is_numeric($key)) {
+        $parentValue[intval($key)] = &$valueResult->value();
+      } else {
+        $parentValue[$key] = &$valueResult->value();
+      }
+    } elseif ($keyType === 'integer') {
+      $parentValue[$key] = &$valueResult->value();
+    } else {
+      // TBD 
+    }
+  }
+  return new Result([null, null]);
+};
+
+function &getLastKeyValue(&$container, $arg, &$root) {
+  $rawArg = $arg->rawArg();
+  $rawArgType = gettype($rawArg);
+  if ($rawArgType === 'string') {
+    if ($rawArg === '$') {
+      $result = new Result([["", &$root], null]);
+      return $result;
+    } elseif (false /* $rawArg in $dslAvailableFunctions */) {
+      // return ["", $dslAvailableFunctions[$rawArg]], null; 
+    } elseif (strpos($rawArg, '.') == false && strpos($rawArg, '[') == false) {
+      $result = new Result([["", $rawArg], null]);
+      return $result;
+    } else {
+      $cursor = $container;
+      $remainStr = $rawArg;
+      preg_match(firstValuePattern, $remainStr, $firstValueMatch);
+      $result = &getLastKeyValue($cursor, new Argument($firstValueMatch[1]), $root);
+      if ($result->hasError()) {
+        return $result;
+      }
+      $firstValue = &$result->value()[1];
+      if ($firstValue !== null) {
+        $cursor = &$firstValue;
+        $remainStr = $firstValueMatch[2];
+      } else {
+        $result = new Result([[null, $rawArg], null]);
+        return $result;
+      }
+      while (true) {
+        $match = preg_match(nextKeyPattern, $remainStr, $nextKeyMatch);
+        if ($match !== 0) {
+          $arrayKeyStr = $nextKeyMatch[2];
+          $periodKeyStr = $nextKeyMatch[3];
+          $remain = $nextKeyMatch[4];
+          if ($periodKeyStr !== '') {
+            $nextKeyResult = array();
+            if ($arrayKeyStr !== '') {
+
+              $result = &getLastKeyValue($root, new Argument($arrayKeyStr), $root);
+              if ($result->hasError()) {
+                return $result;
+              }
+              $nextKeyResult = &$result->value();
+            } else {
+              $result = getLastKeyValue($root, new Argument($periodKeyStr), $root);
+              if ($result->hasError()) {
+                return $result;
+              }
+              $nextKeyResult = &$result->value();
+            }
+            if ($nextKeyResult[0] == "") {
+              $nextKey = $nextKeyResult[1];
+            } elseif ($nextKeyResult[0] === null) {
+              $nextKey = null;
+            } else {
+              $propertyGetResult = &propertyGet($nextKeyResult[1], $nextKeyResult[0]);
+              $nextKey = $propertyGetResult[0];
+            }
+          } else {
+            $newArg = new Argument($arrayKeyStr);
+            $result = &$newArg->evaluate($container);
+            if ($result->hasError()) {
+              return result;
+            } else {
+              $nextKey = &$result->value();
+            }
+          }
+          if ($remain === "") {
+            $result = new Result([[$nextKey, &$cursor], null]);
+            return $result;
+          } else {
+            $propertyGetResult = &propertyGet($cursor, $nextKey);
+            if ($propertyGetResult[1] === null) {
+              $cursor = &$propertyGetResult[0];
+            } else {
+              $result = new Result([null, $error]);
+              return $result;
+            }
+            $remainStr = $remain;
+          }
+        } else {
+          $result = new Result([[null, null], null]);
+          return $result;
+        }
+      }
+    }
+  } else {
+    $result = &$arg->evaluate($container);
+    if ($result->hasError()) {
+      return $result;
+    } else {
+      $result = new Result([["", $result->value()], null]);
+      return $result;
+    }
+  }
+}
+
+function &propertyGet(&$parent, $key) {
+  $keyType = gettype($key);
+  $parentType = gettype($parent);
+  if ($keyType === 'string') {
+    if (is_numeric($keyType)) {
+      $numKey = intval($keyType);
+      $result = [&$parent[$numKey], null];
+      return $result;
+    } else {
+      if ($parentType === 'object' && property_exists($parent, $key)) {
+        $result = [&$parent[$key], null];
+        return $result;
+      } elseif ($parentType === 'array') {
+        $result = [&$parent[$key], null];
+        return $result;
+      } else {
+        $result = [null, "error: key is invalid1"];
+        return $result;
+      }
+    }
+  } elseif ($keyType === 'integer') {
+    return [&$parent[$key], null];
+  } else {
+    return [null, "error: key is invalid2"];
+  }
+}
+
+class Result {
+
+  public function __construct($args) {
+    $this->args = &$args;
+  }
+
+  public function &value() {
+    return $this->args[0];
+  }
+
+  public function hasError() {
+    return $this->args[1] !== null;
+  }
+
+}
 
 class Argument {
 
@@ -24,76 +248,98 @@ class Argument {
 
   public function __construct($rawArg) {
     global $dslFunctions;
-    $this->dslFunctions = $dslFunctions;
+    $this->dslFunctions = &$dslFunctions;
     if (gettype($rawArg) === 'string' && $rawArg !== '$') {
       $this->rawArg = preg_replace(dollerReplacePattern, '$.', $rawArg);
     } else {
       $this->rawArg = $rawArg;
     }
+    return $this;
   }
 
   public function rawArg() {
     return $this->rawArg;
   }
 
-  private function stringEvalLogic($container) {
+  private function &stringEvalLogic(&$container) {
     if ($this->rawArg === '$') {
-      return [$container, null];
+      $result = new Result([&$container, null]);
+      return $result;
     } elseif (false /* calcPattern.match */) {
-      
+      // TODO 
+      return [];
     } elseif (strpos($this->rawArg, '$') === 0) {
-      // TODO
-      return $this->dslFunctions["get"](111, 222);
+      $result = $this->dslFunctions["get"]($container, new Argument($this->rawArg));
+      return $result;
     } else {
-      return [$this->rawArg, null];
+      $result = new Result([$this->rawArg, null]);
+      return $result;
     }
   }
 
-  private function arrayEvalLogic($container) {
-    $result = array();
+  private function &arrayEvalLogic(&$container) {
+    $arrayResult = array();
+    $arrayCount = 0;
     foreach ($this->rawArg as $value) {
       $arg = new Argument($value);
-      list($r, $error ) = $arg->evaluate($container);
-      if ($error != null) {
-        return [null, $error];
+      $result = &$arg->evaluate($container);
+      if ($result->hasError()) {
+        return $result;
       } else {
-        array_push($result, $r);
+        $arrayResult[$arrayCount++] = &$result->value();
       }
     }
-    return [$result, null];
+    $result = new Result([&$arrayResult, null]);
+    return $result;
   }
 
-  private function hashEvalLogic($container) {
+  private function &hashEvalLogic(&$container) {
     $size = count($this->rawArg);
     if ($size === 0) {
-      return [array(), null];
+      $array = arary();
+      $result = new Result([&$array, null]);
+      return $result;
     } elseif ($size === 1) {
       $firstKey = array_keys($this->rawArg)[0];
-      if (array_key_exists($firstKey, $dslFunctions)) {
-        // TODO
+      if (array_key_exists($firstKey, $this->dslFunctions)) {
+        $value = $this->rawArg[$firstKey];
+        $wrappedValue = array();
+        if (is_list($value)) {
+          foreach ($value as $v) {
+            $newArg = new Argument($v);
+            array_push($wrappedValue, $newArg);
+          }
+        } else {
+          $wrappedValue = new Argument($value);
+        }
+        $result = $this->dslFunctions[$firstKey]($container, ...$wrappedValue);
+        return $result;
       } elseif (strpos($firstKey, '$') === 0) {
-        return $this->dslFunctions["set"](
-                        $container, new Argument($firstKey), new Argument($this->rawArg[$firstKey]));
+        $result = $this->dslFunctions["set"](
+                $container, new Argument($firstKey), new Argument($this->rawArg[$firstKey]));
+        return $result;
       } else {
         // TBD
-        return [$this->rawArg, null];
+        $result = new Result([$this->rawArg, null]);
+        return $result;
       }
     } else {
       $evaluatedDict = array();
       foreach ($this->rawArg as $key => $value) {
         $arg = new Argument($value);
-        list($evaluated, $error) = $arg->evaluate($container);
-        if ($error != null) {
-          return [null, $error];
+        $result = &$arg->evaluate($container);
+        if ($result->hasError()) {
+          return $result;
         } else {
-          $evaluatedDict[$key] = $evaluated;
+          $evaluatedDict[$key] = &$result->value();
         }
       }
-      return [$evaluatedDict, null];
+      $result = new Result([&$evaluatedDict, null]);
+      return $result;
     }
   }
 
-  public function evaluate($container) {
+  public function &evaluate(&$container = array()) {
     $type = gettype($this->rawArg);
     if ($type === 'string') {
       return $this->stringEvalLogic($container);
@@ -104,7 +350,8 @@ class Argument {
         return $this->hashEvalLogic($container);
       }
     } else {
-      return [$this->rawArg, null];
+      $result = new Result([$this->rawArg, null]);
+      return $result;
     }
   }
 

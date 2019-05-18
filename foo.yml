@@ -1,3 +1,16 @@
-foo:
-  - bar
-  - wao: true
+# mydsl-pyのtestsuite.ymlから抜粋
+# TBD: testsuite関数の作成
+
+- $foo: bar
+- $boo: {}
+- $boo.woo: {}
+- $boo.woo.soo: yoo
+#- $array:
+#    get: [$no, exist, field, {slice: [[], 1]}]
+# - "$array[0]": array1
+
+- get: [$boo, woo, soo] # yoo
+- $foo                           # bar
+- '$boo.woo.soo'           # yoo
+- '$boo[woo][soo]'        # yoo
+#- "$array[0]"                 #

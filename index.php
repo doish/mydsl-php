@@ -5,10 +5,13 @@ require 'dsl-core.php';
 
 use Symfony\Component\Yaml\Yaml;
 
-$arg = new Argument(['$', '$', '$', '$']);
-list($result) = $arg->evaluate(111);
-var_dump($result);
 $filename = 'foo.yml';
 $content = file_get_contents($filename);
-$value = json_encode(Yaml::parse($content));
-echo $value;
+$yamlParsedValue = Yaml::parse($content);
+$container = array();
+$result = (new Argument($yamlParsedValue))->evaluate($container);
+
+echo "evaluation end\n";
+echo sprintf("argument: %s\n", json_encode($yamlParsedValue));
+echo sprintf("result: %s\n", json_encode($result->value()));
+echo sprintf("container: %s\n", json_encode($container));
