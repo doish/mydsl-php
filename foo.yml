@@ -13,4 +13,13 @@
 - $foo                           # bar
 - '$boo.woo.soo'           # yoo
 - '$boo[woo][soo]'        # yoo
-#- "$array[0]"                 #
+#- "$array[0]"              #
+
+- print: "print test"
+- print: 111
+- print: [111] # 111が表示される。仕様
+
+- do:
+    function:
+      - []
+      - print: "print from created function"

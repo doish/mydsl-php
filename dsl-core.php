@@ -29,7 +29,7 @@ $dslFunctions["get"] = function(&$container, ...$args) {
   $parentValue = &$lastKeyValueResult->value()[1];
   $defaultValue = null;
   if (count($args) !== 0) {
-    // TODO 
+// TODO 
   }
   if ($parentValue !== null) {
     if ($key === null) {
@@ -96,10 +96,112 @@ $dslFunctions["set"] = function(&$container, ...$args) {
     } elseif ($keyType === 'integer') {
       $parentValue[$key] = &$valueResult->value();
     } else {
-      // TBD 
+// TBD 
     }
   }
   return new Result([null, null]);
+};
+
+$dslFunctions["print"] = function(&$container, ...$args) {
+  foreach ($args as $arg) {
+    $result = $arg->evaluate($container);
+    if ($result->hasError()) {
+      return $result;
+    } else {
+      $value = $result->value();
+      $valueType = gettype($value);
+      if ($valueType === 'object' || $valueType === 'array') {
+        var_dump($value);
+      } else {
+        echo $value . "\n";
+      }
+    }
+  }
+  return new Result([null, null]);
+};
+
+$dslFunctions["function"] = function(&$container, ...$args) {
+  $funcContainer = $container;
+  $fixedArguments = array();
+  $argumentNames = $args[0]->rawArg();
+  $process = $args[1];
+  if (count($args) > 2) {
+// TODO
+//    for fixedKey in args[2].rawArg():
+//    evaluated, err = Argument("$." + fixedKey).evaluate(container)
+//    if err != None:
+//        return None, err
+//    fixedArguments[fixedKey] = evaluated
+  }
+
+// https://www.php.net/manual/ja/functions.anonymous.php
+// クロージャは、変数を親のスコープから引き継ぐことができます。 
+//  引き継ぐ変数は、use で渡さなければなりません。
+  $func = function(...$_args) use ($funcContainer, $argumentNames, $process) {
+    foreach ($argumentNames as $i => $argumentName) {
+      $funcContainer[$argumentName] = $_args[$i];
+// TODO
+//  _funcContainer["this"] = container
+// for k, v in fixedArguments.items():
+//      _funcContainer[k] = v
+    }
+    $processResult = $process->evaluate($funcContainer);
+    if ($processResult->hasError()) {
+      return $processResult;
+    }
+    return $processResult;
+  };
+  $result = new Result([&$func, null]);
+  return $result;
+};
+
+$dslFunctions["do"] = function(&$container, ...$args) {
+  $firstArg = $args[0];
+  $args = array_slice($args, 1);
+  $lastKeyValueResult = &getLastKeyValue($container, $firstArg, $container);
+  if ($lastKeyValueResult->hasError()) {
+    return $lastKeyValueResult;
+  }
+  $key = &$lastKeyValueResult->value()[0];
+  $parentValue = &$lastKeyValueResult->value()[1];
+  if ($parentValue === null || $key === null) {
+    return new Result([null, null]);
+  }
+  $cursor = null;
+  if ($key === "") {
+    $cursor = $parentValue;
+  } else {
+    $propertyGetResult = propertyGet($parentValue, $key);
+    $cursor = $propertyGetResult[0];
+  }
+  while (!is_callable($cursor) && count($args) > 0) {
+    $nextArg = args[0];
+    $args = array_slice($args, 1);
+    $result = $nextArg->evaluate($container);
+    if ($result->hasError()) {
+      return $result;
+    }
+    $key = $result[0];
+    $propertyGetResult = propertyGet($cursor, $key);
+    $cursor = $propertyGetResult[0];
+    if ($cursor === null) {
+      break;
+    }
+  }
+  if (is_callable($cursor)) {
+    // TODO
+    //   evaluated, err = evaluateAll(args, container)
+    //    if err != None:
+    //        return None, err
+    //    if len(evaluated) == 1 and isinstance(evaluated[0], dict):
+    //        return cursor(**evaluated[0]), None
+    //    else:
+    //        return cursor(*evaluated), None
+    $callableResult = $cursor();
+    return new Result([$callableResult, null]);
+  } else {
+    return new Result([null, null]);
+  }
 };
 
 function &getLastKeyValue(&$container, $arg, &$root) {
@@ -110,7 +212,7 @@ function &getLastKeyValue(&$container, $arg, &$root) {
       $result = new Result([["", &$root], null]);
       return $result;
     } elseif (false /* $rawArg in $dslAvailableFunctions */) {
-      // return ["", $dslAvailableFunctions[$rawArg]], null; 
+// return ["", $dslAvailableFunctions[$rawArg]], null; 
     } elseif (strpos($rawArg, '.') == false && strpos($rawArg, '[') == false) {
       $result = new Result([["", $rawArg], null]);
       return $result;
@@ -266,7 +368,7 @@ class Argument {
       $result = new Result([&$container, null]);
       return $result;
     } elseif (false /* calcPattern.match */) {
-      // TODO 
+// TODO 
       return [];
     } elseif (strpos($this->rawArg, '$') === 0) {
       $result = $this->dslFunctions["get"]($container, new Argument($this->rawArg));
@@ -310,7 +412,7 @@ class Argument {
             array_push($wrappedValue, $newArg);
           }
         } else {
-          $wrappedValue = new Argument($value);
+          array_push($wrappedValue, new Argument($value));
         }
         $result = $this->dslFunctions[$firstKey]($container, ...$wrappedValue);
         return $result;
@@ -319,7 +421,7 @@ class Argument {
                 $container, new Argument($firstKey), new Argument($this->rawArg[$firstKey]));
         return $result;
       } else {
-        // TBD
+// TBD
         $result = new Result([$this->rawArg, null]);
         return $result;
       }
