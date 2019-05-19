@@ -1,0 +1,19 @@
+prepare:
+- $foo: bar
+- $boo: {}
+- $boo.woo: {}
+- $boo.woo.soo: yoo
+
+tests:
+  -
+    - get: [$boo, woo, soo]
+    - yoo
+  - 
+    - $foo
+    - bar
+  - 
+    - '$boo.woo.soo'
+    - yoo
+  -
+    - '$boo[woo][soo]'
+    - yoo

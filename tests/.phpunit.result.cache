@@ -1,0 +1,1 @@
+C:37:"PHPUnit\Runner\DefaultTestResultCache":323:{a:2:{s:7:"defects";a:2:{s:28:"dslCoreTest::testSetFunction";i:5;s:26:"dslCoreTest::testGetAndSet";i:4;}s:5:"times";a:5:{s:25:"StackTest::testPushAndPop";d:0;s:28:"dslCoreTest::testGetFunction";d:0;s:28:"dslCoreTest::testSetFunction";d:0;s:26:"dslCoreTest::testGetAndSet";d:0.006;s:26:"DslCoreTest::testGetAndSet";d:0.006;}}}
