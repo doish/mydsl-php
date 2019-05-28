@@ -25,5 +25,6 @@
       - print: "print from created function"
 
 - print: DSL関数lenの開発時出力（期待値:2)
+- $array: [aaa, bbb]
 - print:
-    len: [aaa, bbb]
+    len: $array
