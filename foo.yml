@@ -23,3 +23,7 @@
     function:
       - []
       - print: "print from created function"
+
+- print: DSL関数lenの開発時出力（期待値:2)
+- print:
+    len: [aaa, bbb]
